@@ -1,6 +1,8 @@
+# SIMON-32 Implementation
+
 import numpy as np
 from os import urandom
-import sys
+#import sys
 
 def WORD_SIZE():
     return(16);
@@ -22,9 +24,7 @@ def ror(x,k):
 def enc_one_round(p, k):
     x , y  = p[0] , p[1];
     tmp_1 = rol(x,1) & rol(x,8); 
-    #tmp_1 = x & rol(x,5);  # SIMECK
     tmp_2 = rol(x,2); 
-    #tmp_2 = rol(x,1) # SIMECK
     x = y ^ tmp_1 ^ tmp_2 ^ k;  
     return(x,p[0]);
 
@@ -78,12 +78,7 @@ def check_testvector():
     return(False);
 #check_testvector();
 #sys.exit()
-#convert_to_binary takes as input an array of ciphertext pairs
-#where the first row of the array contains the lefthand side of the ciphertexts,
-#the second row contains the righthand side of the ciphertexts,
-#the third row contains the lefthand side of the second ciphertexts,
-#and so on
-#it returns an array of bit vectors containing the same data
+
 def convert_to_binary(arr):
   X = np.zeros((4 * WORD_SIZE(),len(arr[0])),dtype=np.uint8);
   for i in range(4 * WORD_SIZE()):
@@ -100,9 +95,7 @@ def convert_to_binary_new(arr,WORD_SIZE=16,NO_OF_WORDS=2):
     X[i] = (arr[index] >> offset) & 1;
   X = X.transpose();
   return(X);
-#takes a text file that contains encrypted block0, block1, true diff prob, real or random
-#data samples are line separated, the above items whitespace-separated
-#returns train data, ground truth, optimal ddt prediction
+
 def readcsv(datei):
     data = np.genfromtxt(datei, delimiter=' ', converters={x: lambda s: int(s,16) for x in range(2)});
     X0 = [data[i][0] for i in range(len(data))];
@@ -115,17 +108,12 @@ def readcsv(datei):
     ct1b = [X1[i] & MASK_VAL for i in range(len(data))];
     ct0a = np.array(ct0a, dtype=np.uint16); ct1a = np.array(ct1a,dtype=np.uint16);
     ct0b = np.array(ct0b, dtype=np.uint16); ct1b = np.array(ct1b, dtype=np.uint16);
-    
-    #X = [[X0[i] >> 16, X0[i] & 0xffff, X1[i] >> 16, X1[i] & 0xffff] for i in range(len(data))];
     X = convert_to_binary([ct0a, ct1a, ct0b, ct1b]); 
     Y = np.array(Y, dtype=np.uint8); Z = np.array(Z);
     return(X,Y,Z);
 
-#baseline training data generator
 def make_train_data(n, nr, diff=(0,0x0020),r_start=1):
-#def make_train_data(n, nr, diff=(0x0001,0)):
   Y = np.frombuffer(urandom(n), dtype=np.uint8); Y = Y & 1;
-  #keys = np.frombuffer(urandom(8*n),dtype=np.uint16).reshape(4,-1);
   keys = np.repeat(np.frombuffer(urandom(8),dtype=np.uint16).reshape(4,-1),n,axis=1);
   plain0l = np.frombuffer(urandom(2*n),dtype=np.uint16);
   plain0r = np.frombuffer(urandom(2*n),dtype=np.uint16);
@@ -134,58 +122,38 @@ def make_train_data(n, nr, diff=(0,0x0020),r_start=1):
   plain1l[Y==0] = np.frombuffer(urandom(2*num_rand_samples),dtype=np.uint16);
   plain1r[Y==0] = np.frombuffer(urandom(2*num_rand_samples),dtype=np.uint16);
   ks = expand_key(keys, (r_start-1) + nr);
-  #ctdata0l, ctdata0r = encrypt((plain0l, plain0r), ks);
-  #ctdata1l, ctdata1r = encrypt((plain1l, plain1r), ks);
-  #X = convert_to_binary([ctdata0l, ctdata0r, ctdata1l, ctdata1r]);
   ctdata0 = encrypt((plain0l, plain0r), ks,r_start);
   ctdata1= encrypt((plain1l, plain1r), ks,r_start);
   X = convert_to_binary_new(np.array(ctdata0^ctdata1),16,2);
   return(X,Y);
 def make_train_data_no_random(n, nr, diff=(0,0x0020),r_start=1,output_Y=1):
-#def make_train_data(n, nr, diff=(0x0001,0)):
   Y = np.frombuffer(urandom(n), dtype=np.uint8); 
   if (output_Y==0):
     Y = (Y & 0);
   elif (output_Y==1):
     Y = (Y & 1) | 1;
-  #keys = np.frombuffer(urandom(8*n),dtype=np.uint16).reshape(4,-1);
   keys = np.repeat(np.frombuffer(urandom(8),dtype=np.uint16).reshape(4,-1),n,axis=1);
   plain0l = np.frombuffer(urandom(2*n),dtype=np.uint16);
   plain0r = np.frombuffer(urandom(2*n),dtype=np.uint16);
   plain1l = plain0l ^ diff[0]; plain1r = plain0r ^ diff[1];
-  #num_rand_samples = np.sum(Y==0);
-  #plain1l[Y==0] = np.frombuffer(urandom(2*num_rand_samples),dtype=np.uint16);
-  #plain1r[Y==0] = np.frombuffer(urandom(2*num_rand_samples),dtype=np.uint16);
   ks = expand_key(keys, (r_start-1) + nr);
-  #ctdata0l, ctdata0r = encrypt((plain0l, plain0r), ks);
-  #ctdata1l, ctdata1r = encrypt((plain1l, plain1r), ks);
-  #X = convert_to_binary([ctdata0l, ctdata0r, ctdata1l, ctdata1r]);
   ctdata0 = encrypt((plain0l, plain0r), ks,r_start);
   ctdata1= encrypt((plain1l, plain1r), ks,r_start);
   X = convert_to_binary_new(np.array(ctdata0^ctdata1),16,2);
   return(X,Y);
-#real differences data generator
 def real_differences_data(n, nr, diff=(0,0x0020)):
-  #generate labels
   Y = np.frombuffer(urandom(n), dtype=np.uint8); Y = Y & 1;
-  #generate keys
   keys = np.frombuffer(urandom(8*n),dtype=np.uint16).reshape(4,-1);
-  #generate plaintexts
   plain0l = np.frombuffer(urandom(2*n),dtype=np.uint16);
   plain0r = np.frombuffer(urandom(2*n),dtype=np.uint16);
-  #apply input difference
   plain1l = plain0l ^ diff[0]; plain1r = plain0r ^ diff[1];
   num_rand_samples = np.sum(Y==0);
-  #expand keys and encrypt
   ks = expand_key(keys, nr);
   ctdata0l, ctdata0r = encrypt((plain0l, plain0r), ks);
   ctdata1l, ctdata1r = encrypt((plain1l, plain1r), ks);
-  #generate blinding values
   k0 = np.frombuffer(urandom(2*num_rand_samples),dtype=np.uint16);
   k1 = np.frombuffer(urandom(2*num_rand_samples),dtype=np.uint16);
-  #apply blinding to the samples labelled as random
   ctdata0l[Y==0] = ctdata0l[Y==0] ^ k0; ctdata0r[Y==0] = ctdata0r[Y==0] ^ k1;
   ctdata1l[Y==0] = ctdata1l[Y==0] ^ k0; ctdata1r[Y==0] = ctdata1r[Y==0] ^ k1;
-  #convert to input data for neural networks
   X = convert_to_binary([ctdata0l, ctdata0r, ctdata1l, ctdata1r]);
   return(X,Y);
